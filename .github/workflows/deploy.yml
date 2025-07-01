@@ -1,0 +1,47 @@
+# deploy-workflows/.github/workflows/deploy.yml
+
+name: Deploy SSR App
+
+on:
+  workflow_call:
+    inputs:
+      app-dir:
+        required: true
+        type: string
+    secrets:
+      SSH_PRIVATE_KEY:
+        required: true
+      SERVER_USER:
+        required: true
+      SERVER_HOST:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.8.1
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Rsync to server
+        run: |
+          rsync -avz \
+            --exclude=node_modules \
+            --exclude=.git \
+            --delete \
+            -e "ssh -o StrictHostKeyChecking=no" \
+            ./ ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ inputs.app-dir }}/
+
+      - name: Rebuild
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << EOF
+            cd ${{ inputs.app-dir }}
+            npm install --production
+            docker compose down --remove-orphans
+            docker compose up -d --build
+          EOF
